@@ -54,20 +54,22 @@ type Settings struct {
 	BackupDays int `json:"backupDays"` // automatic backup interval, 0 = off
 	BackupKeep int `json:"backupKeep"`
 
-	DayGrid         []GridItem `json:"dayGrid"` // position and size of the day view blocks
+	DayGrid         []GridItem `json:"dayGrid"`       // position and size of the day view blocks
+	DayGridPinned   bool       `json:"dayGridPinned"` // the day view layout can't be moved or resized
 	MergeSubdomains bool       `json:"mergeSubdomains"`
 	SiteIcons       bool       `json:"siteIcons"`   // download icons the browsers don't have from the sites
 	UpdateCheck     bool       `json:"updateCheck"` // look for new releases now and then
 }
 
 // GridItem places one day view block: Y is its row, X and W its columns (of
-// 12) and H the row height in grid units (0 for a row fitting its content).
+// 12, fractional) and H the row height in grid units (0 for a row fitting its
+// content).
 type GridItem struct {
-	ID string `json:"id"`
-	X  int    `json:"x"`
-	Y  int    `json:"y"`
-	W  int    `json:"w"`
-	H  int    `json:"h"`
+	ID string  `json:"id"`
+	X  float64 `json:"x"`
+	Y  int     `json:"y"`
+	W  float64 `json:"w"`
+	H  float64 `json:"h"`
 }
 
 // DefaultSettings mirrors ManicTime's defaults, with screenshots enabled at a

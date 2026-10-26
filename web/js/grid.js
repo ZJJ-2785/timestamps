@@ -1,20 +1,20 @@
 // Day view layout: blocks sit in full-width rows. A row holds one to three
-// blocks whose widths (1/3, 1/2, 2/3 or all of 12 columns) always add up to
-// the full width, and the blocks of a row share its height, picked from a
-// short list. A row with a fit-to-content block (the timeline) takes that
-// block's height.
+// blocks whose widths (in 12 columns, fractional) always add up to the full
+// width, and the blocks of a row share its height. Each block has a minimum
+// width and height. A row with a fit-to-content block takes that block's
+// height.
 //
 // A block is picked up by pressing on any empty part of it. While it is
 // dragged the layout stays still and a marker shows where it will go.
-// Dropped on the middle of another block it takes that block's place and
-// width, and the other block moves down into a full-width row of its own (in
-// the same row the two swap places, keeping their widths). Dropped on the
+// Dropped on the middle of another block the two swap places, each taking
+// the other's width and row height (as far as their minimums allow). Dropped on the
 // left or right part (30%) of a block it goes beside it in that row (the
 // row's blocks share the width again, the moved one keeping its width when it
 // can); near the top or bottom edge of a row, or between rows, it gets a row
 // of its own there. The row it left closes up to full width. The border
 // between two blocks of a row moves both, the bottom border sets the row's
-// height.
+// height; both follow the pointer, catching at thirds and halves of the row.
+// A locked (pinned) board can't be dragged or resized.
 import { h } from './ui.js';
 import { t } from './i18n.js';
 
@@ -22,8 +22,11 @@ export const COLS = 12;
 const ROW = 30; // px per height unit
 const GAP = 14; // px between blocks
 const NARROW = 860; // below this width blocks simply stack
-const HEIGHTS = [6, 8, 10, 13, 16, 20]; // row heights, in units
-const COMBOS = { 1: [[12]], 2: [[6, 6], [8, 4], [4, 8]], 3: [[4, 4, 4]] };
+const MIN_W = 3; // default minimum width, in columns
+const MIN_H = 5; // default minimum row height, in units
+const MAX_H = 40;
+const SNAP_W = [3, 4, 6, 8, 9]; // border positions (columns) a width catches at
+const SNAP_PX = 10; // how close the pointer has to be for that
 
 // Pressing on these never starts a drag: they have their own interaction.
 const NO_DRAG = 'button, a, input, select, textarea, label, [contenteditable], .row, .sub-row, .al-row, .al-head, .al-bulk, ' +
@@ -38,28 +41,35 @@ function onScrollbar(e) {
     (el.scrollWidth > el.clientWidth && e.clientY > r.top + el.clientHeight);
 }
 
-const nearest = (list, v) => list.reduce((best, x) => (Math.abs(x - v) < Math.abs(best - v) ? x : best), list[0]);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const unitPx = (u) => u * ROW + (u - 1) * GAP;
 const copy = (rows) => rows.map((r) => ({ h: r.h, items: r.items.map((i) => ({ ...i })) }));
 
 /**
- * Widths for the blocks of one row ([{ id, w }], w = wanted width): the
- * allowed combination closest to the wanted widths, or null if there is none.
- * allowed(id) lists the widths a block may have.
+ * Widths for the blocks of one row ([{ id, w }], w = wanted width): the wanted
+ * widths scaled to the full width, each at least minW(id), or null if the
+ * minimums don't fit (or there are more than three blocks).
  */
-export function fitRow(items, allowed) {
-  let best = null, bestD = Infinity;
-  for (const c of COMBOS[items.length] || []) {
-    if (c.some((w, i) => !allowed(items[i].id).includes(w))) continue;
-    const d = c.reduce((n, w, i) => n + Math.abs(w - items[i].w), 0);
-    if (d < bestD) { best = c; bestD = d; }
+export function fitRow(items, minW) {
+  if (!items.length || items.length > 3) return null;
+  const mins = items.map((i) => minW(i.id));
+  if (mins.reduce((n, m) => n + m, 0) > COLS + 1e-6) return null;
+  const want = items.map((i) => Math.max(0.01, i.w || 0));
+  // Blocks that would end up under their minimum get it; the others share
+  // what is left in proportion.
+  const fixed = new Set();
+  for (;;) {
+    const room = COLS - [...fixed].reduce((n, k) => n + mins[k], 0);
+    const free = want.reduce((n, w, k) => (fixed.has(k) ? n : n + w), 0);
+    const under = want.findIndex((w, k) => !fixed.has(k) && (w * room) / free < mins[k] - 1e-6);
+    if (under < 0) return want.map((w, k) => (fixed.has(k) ? mins[k] : (w * room) / free));
+    fixed.add(under);
   }
-  return best;
 }
 
 /** Fits every row to the full width, keeping the widths' proportions as far
  *  as it can; a row that can't be fitted is split into more rows. */
-export function normalize(rows, allowed) {
+export function normalize(rows, minW) {
   const out = [];
   for (const r of rows) {
     let items = r.items;
@@ -68,7 +78,7 @@ export function normalize(rows, allowed) {
       for (; k > 0 && !fit; k--) {
         const part = items.slice(0, k);
         const sum = part.reduce((n, i) => n + i.w, 0) || 1;
-        fit = fitRow(part.map((i) => ({ id: i.id, w: (i.w * COLS) / sum })), allowed);
+        fit = fitRow(part.map((i) => ({ id: i.id, w: (i.w * COLS) / sum })), minW);
         if (fit) break;
       }
       if (!fit) { k = 1; fit = [COLS]; }
@@ -81,8 +91,9 @@ export function normalize(rows, allowed) {
 
 export class Board {
   /**
-   * blocks: [{ id, el, row, w, h, widths: [6, 8, 12], autoHeight }] in their
-   *   default rows (row index) and order; h is the default row height.
+   * blocks: [{ id, el, row, w, h, minW, minH, autoHeight }] in their default
+   *   rows (row index) and order; h is the default row height, minW and minH
+   *   the smallest width (columns) and height (units) it may have.
    * layout: saved [{ id, x, y, w, h }] (y = row; may be empty or stale)
    * onChange(layout) is called after every drag or resize.
    */
@@ -90,7 +101,7 @@ export class Board {
     this.host = host;
     this.onChange = onChange;
     this.blocks = new Map(blocks.map((b) => [b.id, b]));
-    this.allowed = (id) => this.blocks.get(id).widths;
+    this.minW = (id) => this.blocks.get(id).minW || MIN_W;
     const x = {};
     this.defaults = this.fromItems(blocks.map((b) => {
       const it = { id: b.id, x: x[b.row] || 0, y: b.row, w: b.w, h: b.h || 0 };
@@ -102,6 +113,7 @@ export class Board {
     this.edges = new Map();
     this.preview = null; // rows shown while dragging or resizing
     this.dragId = null;
+    this.locked = false;
     host.classList.add('grid');
     this.holder = h('div', { class: 'gi-holder', hidden: true });
     this.marker = h('div', { class: 'gi-drop', hidden: true }, h('span', { class: 'gi-drop-label' }));
@@ -153,12 +165,15 @@ export class Board {
 
   isAuto(row) { return row.items.some((i) => this.blocks.get(i.id).autoHeight); }
 
-  /** Full-width rows with heights from the list (0 for fit-to-content rows). */
+  /** The smallest height every block of a row allows. */
+  minH(row) { return Math.max(...row.items.map((i) => this.blocks.get(i.id).minH || MIN_H)); }
+
+  /** Full-width rows with heights the blocks allow (0 for fit-to-content rows). */
   tidy(rows) {
-    return normalize(rows.filter((r) => r.items.length), this.allowed).map((r) => {
+    return normalize(rows.filter((r) => r.items.length), this.minW).map((r) => {
       if (this.isAuto(r)) return { ...r, h: 0 };
       const def = Math.max(...r.items.map((i) => this.blocks.get(i.id).h || 0));
-      return { ...r, h: nearest(HEIGHTS, r.h || def || 10) };
+      return { ...r, h: clamp(r.h || def || 10, this.minH(r), MAX_H) };
     });
   }
 
@@ -190,6 +205,12 @@ export class Board {
     this.rows = copy(this.defaults);
     this.render();
     this.onChange(this.current());
+  }
+
+  setLocked(locked) {
+    this.locked = !!locked;
+    this.host.classList.toggle('locked', this.locked);
+    this.render();
   }
 
   setHidden(id, hidden) {
@@ -225,9 +246,7 @@ export class Board {
   /** Whether the border after block i of a row can move. */
   canMove(row, i) {
     const a = row.items[i], b = row.items[i + 1];
-    if (!b) return false;
-    const sum = a.w + b.w;
-    return this.allowed(a.id).some((w) => w !== a.w && w < sum && this.allowed(b.id).includes(sum - w));
+    return !!b && a.w + b.w > this.minW(a.id) + this.minW(b.id) + 0.05;
   }
 
   render() {
@@ -257,8 +276,8 @@ export class Board {
     this.geo = g;
     rows.forEach((r, ri) => r.items.forEach((it, i) => {
       const edges = this.edges.get(it.id);
-      edges.e.hidden = !!this.dragId || !this.canMove(r, i);
-      edges.s.hidden = !!this.dragId || this.isAuto(r);
+      edges.e.hidden = this.locked || !!this.dragId || !this.canMove(r, i);
+      edges.s.hidden = this.locked || !!this.dragId || this.isAuto(r);
       if (it.id === this.dragId) return;
       const el = this.items.get(it.id);
       const p = g.rects.get(it.id);
@@ -299,7 +318,7 @@ export class Board {
 
   /** A press on an empty part of a block becomes a drag once it moves. */
   press(e, id) {
-    if (e.button !== 0 || this.host.classList.contains('narrow')) return;
+    if (e.button !== 0 || this.locked || this.host.classList.contains('narrow')) return;
     if (e.target.closest(NO_DRAG) || onScrollbar(e)) return;
     const sx = e.clientX, sy = e.clientY;
     const move = (ev) => {
@@ -325,13 +344,11 @@ export class Board {
     const me = { id, w: src.items.find((i) => i.id === id).w, h: src.h || this.blocks.get(id).h || 10 };
     // The layout without the block: its row closes up (or goes away).
     const base = this.tidy(rows.map((r, i) => (i === ri ? { h: r.h, items: r.items.filter((x) => x.id !== id) } : r)));
-    const srcRow = src.items.length > 1 ? ri : -1; // the row it left, in `base`
-    const srcIdx = src.items.findIndex((i) => i.id === id);
     // Where it goes (rows and indexes in `base`): a new row before row `at`;
-    // into row `row` before block `index` (join); or in place of that block
-    // (replace), which then gets a row of its own just below.
+    // into row `row` before block `index` (join); or swapped with that block
+    // (replace).
     const fitted = (r, items) => {
-      const fit = fitRow(items, this.allowed);
+      const fit = fitRow(items, this.minW);
       if (!fit) return false;
       r.items = items.map((x, i) => ({ id: x.id, w: fit[i] }));
       return true;
@@ -352,20 +369,12 @@ export class Board {
         items.splice(t.index, 0, { id, w: want });
         return fitted(r, items) ? this.tidy(out) : null;
       }
-      // Replace: it takes the other block's place and width.
-      const other = r.items[t.index];
-      if (t.row === srcRow) {
-        // Same row: the two swap places, each keeping its width.
-        const items = src.items.map((x) => ({ ...x }));
-        const oi = items.findIndex((x) => x.id === other.id);
-        [items[oi], items[srcIdx]] = [items[srcIdx], items[oi]];
-        return fitted(r, items) ? this.tidy(out) : null;
-      }
-      const items = r.items.map((x) => ({ ...x }));
-      items[t.index] = { id, w: other.w };
-      if (!fitted(r, items)) return null;
-      out.splice(t.row + 1, 0, { h: r.h || this.blocks.get(other.id).h || 10, items: [{ id: other.id, w: COLS }] });
-      return this.tidy(out);
+      // Swap: the two trade places in the layout as it was; each slot keeps
+      // its width and row height.
+      const other = r.items[t.index].id;
+      const swapped = copy(rows);
+      for (const row of swapped) for (const x of row.items) x.id = x.id === id ? other : x.id === other ? id : x.id;
+      return this.tidy(swapped);
     };
     const rowOf = (bid) => base.findIndex((r) => r.items.some((x) => x.id === bid));
     const unchanged = JSON.stringify(rows);
@@ -404,7 +413,7 @@ export class Board {
           const index = base[b].items.findIndex((x) => x.id === over.id);
           const left = { t: { type: 'join', row: b, index }, mark: vbar(over.left - GAP / 2, r) };
           const right = { t: { type: 'join', row: b, index: index + 1 }, mark: vbar(over.left + over.width + GAP / 2, r) };
-          const repl = { t: { type: 'replace', row: b, index }, mark: { kind: 'box', left: over.left, top: r.top, width: over.width, height: r.bottom - r.top, label: t('Replace') } };
+          const repl = { t: { type: 'replace', row: b, index }, mark: { kind: 'box', left: over.left, top: r.top, width: over.width, height: r.bottom - r.top, label: t('Swap') } };
           const f = (lx - over.left) / over.width;
           const row = ly < (r.top + r.bottom) / 2 ? above : below;
           cands = f < 0.3 ? [left, repl, row] : f > 0.7 ? [right, repl, row] : [repl, f < 0.5 ? left : right, row];
@@ -473,10 +482,11 @@ export class Board {
   /**
    * Border resize: the right border moves the border shared with the next
    * block of the row (both change width); the bottom border sets the row
-   * height. Both jump between the allowed sizes nearest to the pointer.
+   * height. Both follow the pointer within the blocks' minimums; a border
+   * catches at thirds and halves of the row.
    */
   startResize(e, id, handle, dir) {
-    if (e.button !== 0 || this.host.classList.contains('narrow')) return;
+    if (e.button !== 0 || this.locked || this.host.classList.contains('narrow')) return;
     e.preventDefault();
     e.stopPropagation();
     try { handle.setPointerCapture(e.pointerId); } catch (_) { /* best effort */ }
@@ -497,18 +507,14 @@ export class Board {
         const a = row.items[i], b = row.items[i + 1];
         const sum = a.w + b.w;
         const left = row.items.slice(0, i).reduce((n, x) => n + x.w, 0);
-        const col = (lx + GAP / 2) / (this.colW + GAP); // pointer, in columns
-        let best = a.w;
-        for (const w of this.allowed(a.id)) {
-          if (w < sum && this.allowed(b.id).includes(sum - w) && Math.abs(left + w - col) < Math.abs(left + best - col)) best = w;
-        }
-        if (best === a.w) return;
-        a.w = best;
-        b.w = sum - best;
+        const step = this.colW + GAP;
+        let col = (lx + GAP / 2) / step; // pointer, in columns
+        const snap = SNAP_W.find((c) => Math.abs(c - col) * step < SNAP_PX);
+        if (snap !== undefined) col = snap;
+        a.w = clamp(col - left, this.minW(a.id), sum - this.minW(b.id));
+        b.w = sum - a.w;
       } else {
-        const hh = nearest(HEIGHTS, (ly - top + GAP) / (ROW + GAP));
-        if (hh === row.h) return;
-        row.h = hh;
+        row.h = clamp((ly - top + GAP) / (ROW + GAP), this.minH(row), MAX_H);
       }
       this.preview = next;
       this.render();

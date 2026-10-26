@@ -57,6 +57,22 @@ export function mount(el, params) {
   const dateBtn = h('button', { class: 'btn date-btn', type: 'button', title: t('Pick a date') }, icon('day', 16), h('span', null, fmtDateLong(date)));
   dateBtn.onclick = async () => { const d = await pickDate(dateBtn, date); if (d) go('day/' + d); };
   const kpis = h('div', { class: 'kpis' });
+  const resetBtn = button('', { icon: 'layers', variant: 'ghost', title: t('Reset layout'), onClick: () => board.reset() });
+  const pinBtn = button('', { icon: 'pin', variant: 'ghost', onClick: () => setPinned(!(state.settings && state.settings.dayGridPinned)) });
+  // A pinned layout can't be dragged, resized or reset.
+  const showPinned = (on) => {
+    pinBtn.classList.toggle('on', on);
+    pinBtn.title = on ? t('Unpin layout') : t('Pin layout');
+    resetBtn.disabled = on;
+  };
+  const setPinned = (on) => {
+    if (!state.settings) return;
+    state.settings.dayGridPinned = on;
+    board.setLocked(on);
+    showPinned(on);
+    api.post('settings', state.settings).catch((err) => toast(err.message, { type: 'error' }));
+  };
+  showPinned(!!(state.settings && state.settings.dayGridPinned));
   const header = h('header', { class: 'toolbar' },
     h('div', { class: 'date-nav' },
       button('', { icon: 'left', title: t('Previous day') + ' (F7)', onClick: () => go('day/' + addDays(date, -1)) }),
@@ -70,7 +86,8 @@ export function mount(el, params) {
       button('', { icon: 'fit', title: t('Fit active hours') + ' (0)', onClick: () => tl.fit() }),
       button('24h', { title: t('Whole day') + ' (Shift+0)', onClick: () => tl.fit(!(data && tl.view[0] <= data.from && tl.view[1] >= data.to)), class: 'btn-text' }),
       button('', { icon: 'zoomIn', title: t('Zoom in') + ' (+)', onClick: () => tl.zoomBy(1 / 1.6) })),
-    button('', { icon: 'layers', variant: 'ghost', title: t('Reset layout'), onClick: () => board.reset() }));
+    pinBtn,
+    resetBtn);
 
   // ---- timeline ----
   const tlHost = h('div', { class: 'tl-host' });
@@ -91,20 +108,22 @@ export function mount(el, params) {
     state.settings.dayGrid = layout;
     api.post('settings', state.settings).catch((err) => toast(err.message, { type: 'error' }));
   }, 400);
-  // Full-width rows of 12 columns (widths 4/6/8/12 = 1/3, 1/2, 2/3, all);
-  // h is the default row height in 44 px units. The timeline fits its lanes.
-  const W = [4, 6, 8, 12];
+  // Full-width rows of 12 columns; h is the default row height in grid
+  // units, minW and minH the smallest size. The timeline's lanes fill its
+  // height.
   const board = new Board(boardEl, [
-    { id: 'timeline', el: tlCard, row: 0, w: 12, widths: [8, 12], autoHeight: true },
-    { id: 'activities', el: listHost, row: 1, w: 8, h: 13, widths: [6, 8, 12] },
-    { id: 'docs', el: docsCard, row: 1, w: 4, h: 13, widths: W },
-    { id: 'apps', el: appsCard, row: 2, w: 6, h: 10, widths: W },
-    { id: 'tags', el: tagsCard, row: 2, w: 6, h: 10, widths: W },
-    { id: 'shots', el: shotsCard, row: 3, w: 12, h: 6, widths: W },
+    { id: 'timeline', el: tlCard, row: 0, w: 12, h: 10, minW: 6, minH: 7 },
+    { id: 'activities', el: listHost, row: 1, w: 8, h: 13, minW: 5 },
+    { id: 'docs', el: docsCard, row: 1, w: 4, h: 13 },
+    { id: 'apps', el: appsCard, row: 2, w: 6, h: 10 },
+    { id: 'tags', el: tagsCard, row: 2, w: 6, h: 10 },
+    { id: 'shots', el: shotsCard, row: 3, w: 12, h: 5, minH: 4 },
   ], (state.settings && state.settings.dayGrid) || [], saveLayout);
   board.setHidden('shots', true);
+  board.setLocked(state.settings && state.settings.dayGridPinned);
 
   const tl = new Timeline(tlHost, {
+    fill: true,
     onSelect: (s) => { sel = s; renderSelBar(); renderSummaries(); list.setSelection(s); },
     onSelecting: (s) => { sel = s; renderSelBar(); },
     onHover: (hit, e) => {

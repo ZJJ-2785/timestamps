@@ -1,12 +1,14 @@
 // Canvas timeline: stacked lanes of segments with zoom, pan, hover,
 // range selection (with snapping), app icons, screenshot thumbnails and a
-// 24-hour overview strip whose window can be dragged and resized.
+// 24-hour overview strip whose window can be dragged and resized. With
+// opts.fill the lanes stretch or shrink to fill the host's height.
 import { clock } from './fmt.js';
 import { icon } from './ui.js';
 
 const TICKS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600];
 const FONT = '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif';
 const MINI_H = 44;
+const MINI_GAP = 6; // .tl-mini margin-top
 
 function lastStartingBefore(segs, t) {
   let lo = 0, hi = segs.length - 1, ans = -1;
@@ -97,6 +99,7 @@ export class Timeline {
     this.from = from;
     this.to = to;
     this.lanes = lanes;
+    for (const l of lanes) if (l.base == null) l.base = l.h;
     this.now = now || 0;
     const b = [];
     for (const l of lanes) if (l.style !== 'shots') for (const s of l.segs) b.push(s.s, s.e);
@@ -204,7 +207,18 @@ export class Timeline {
 
   // ---- geometry ---------------------------------------------------------
 
+  /** With opts.fill, scales the lanes' heights to the room the host has. */
+  fitLanes() {
+    if (!this.opts.fill || !this.lanes.length) return;
+    const base = this.lanes.reduce((n, l) => n + l.base, 0);
+    const room = this.host.clientHeight - MINI_H - MINI_GAP - this.axisH - 2 - this.gap * this.lanes.length;
+    const k = Math.max(0.5, Math.min(3, room / base));
+    for (const l of this.lanes) l.h = Math.floor(l.base * k);
+    this.renderLabels();
+  }
+
   resize() {
+    this.fitLanes();
     const w = this.host.clientWidth;
     let hgt = this.axisH;
     for (const l of this.lanes) hgt += l.h + this.gap;
