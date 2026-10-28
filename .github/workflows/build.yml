@@ -1,0 +1,101 @@
+# Tests and builds Timestamps for macOS and Windows on every push. For a
+# version tag (v1.2.0) it then publishes the GitHub release: the Windows
+# setup and portable exe, the macOS app, both browser extensions and their
+# SHA-256 sums, with release-notes/<tag>.md as the description.
+name: Build
+
+on:
+  push:
+    branches: [main, macos]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.22'
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build Timestamps.app
+        run: sh ./build-mac.sh
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Timestamps-macOS
+          path: build/Timestamps-*-macos.zip
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.20'
+
+      # cgo (SQLite) needs a MinGW-w64 gcc; the image normally has one.
+      - name: C compiler
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw -y --no-progress }
+          gcc --version
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build the app and the setup
+        run: .\build-setup.ps1
+
+      - name: Name the files
+        run: |
+          $v = (Select-String -Path internal\server\server.go -Pattern 'const Version = "([^"]+)"').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "build\Timestamps-Setup-$v.exe" dist\
+          Copy-Item build\timestamps.exe "dist\Timestamps-$v-windows-x64.exe"
+          Get-ChildItem dist | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Timestamps-Windows
+          path: dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Check the version, add the extensions and checksums
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -q "^const Version = \"$v\"$" internal/server/server.go || { echo "::error::$GITHUB_REF_NAME doesn't match the version in internal/server/server.go"; exit 1; }
+          test -s "release-notes/$GITHUB_REF_NAME.md" || { echo "::error::release-notes/$GITHUB_REF_NAME.md is missing"; exit 1; }
+          for f in "Timestamps-Setup-$v.exe" "Timestamps-$v-windows-x64.exe" "Timestamps-$v-macos.zip"; do
+            test -s "dist/$f" || { echo "::error::$f was not built"; exit 1; }
+          done
+          zip -j -X "dist/Timestamps-$v-extension-chromium.zip" extension/{manifest.json,background.js,icon16.png,icon48.png,icon128.png}
+          zip -j -X "dist/Timestamps-$v-extension-firefox.zip" extension/firefox/{manifest.json,background.js,icon16.png,icon48.png,icon128.png}
+          (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: Timestamps ${{ env.VERSION }}
+          body_path: release-notes/${{ github.ref_name }}.md
+          files: dist/*
+          make_latest: 'true'

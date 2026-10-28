@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Timestamps - website tracking",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Sends the address of the active tab to the Timestamps desktop app on this computer. Nothing leaves your PC.",
   "permissions": ["tabs", "alarms", "http://127.0.0.1/*"],
   "background": { "scripts": ["background.js"] },

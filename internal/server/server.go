@@ -34,7 +34,7 @@ import (
 )
 
 // Version is the application version shown in the UI.
-const Version = "1.1.0"
+const Version = "1.2.0"
 
 // Ports tried in order; the browser extension probes the same list.
 var Ports = []int{47613, 47614, 47615, 47616}

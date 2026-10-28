@@ -169,8 +169,15 @@ architectures, makes `build/Timestamps.app`, signs it ad hoc and zips it:
 sh build-mac.sh
 ```
 
-GitHub Actions (`.github/workflows/macos.yml`) runs the tests and this build
-on a Mac for every push, and attaches the zip to the release of a `v*` tag.
+GitHub Actions (`.github/workflows/build.yml`) runs the tests and both builds,
+on a Mac and on Windows, for every push.
+
+To release, set the new version in `internal/server/server.go`, `assets/app.rc`,
+`assets/app.manifest`, `tools/setup/setup.rc` and the extension manifests,
+regenerate the two `rsrc_windows_amd64.syso` files (delete them and run
+`.\build-setup.ps1`), write `release-notes/v<version>.md`, then push a
+`v<version>` tag. The workflow builds every file and publishes the release
+with those notes.
 
 `go run ./tools/genicon .` regenerates the icons (`.ico`, `.icns`, PNGs);
 `go test ./...` runs the tests. Set `TIMESTAMPS_WEB_DIR=<repo>\web` to serve the UI from disk
