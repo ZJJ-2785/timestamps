@@ -20,6 +20,7 @@ type App struct {
 	srv     *server.Server
 	dataDir string
 	exiting bool
+	wake    chan struct{} // tipLoop redraws now rather than at its next round
 	native
 }
 
@@ -38,7 +39,7 @@ const (
 )
 
 func newApp(db *store.DB, t *tracker.Tracker, srv *server.Server, dataDir string) *App {
-	return &App{db: db, t: t, srv: srv, dataDir: dataDir}
+	return &App{db: db, t: t, srv: srv, dataDir: dataDir, wake: make(chan struct{}, 1)}
 }
 
 func (a *App) lang() string {
@@ -130,6 +131,14 @@ func (a *App) command(id int) {
 func (a *App) watch() {
 	ch := a.t.Subscribe()
 	for ev := range ch {
+		if ev.Type == "state" {
+			// Paused or resumed: the ring turns gray, or back, at once.
+			select {
+			case a.wake <- struct{}{}:
+			default:
+			}
+			continue
+		}
 		if ev.Type != "away" {
 			continue
 		}
@@ -174,18 +183,25 @@ func (a *App) tipLoop() {
 		}
 		a.setTip(tip)
 		a.updateRing(l.State == "paused")
-		time.Sleep(30 * time.Second)
+		select {
+		case <-a.wake:
+		case <-time.After(30 * time.Second):
+		}
 	}
 }
 
-// ringNow is what the app's icon, a ring that fills once a day, shows now:
-// the day in 5-minute steps and its color (gray while paused). key changes
-// whenever the drawing would.
+// ringNow is what the app's icon, a ring that fills once a day, shows now.
 func ringNow(paused bool) (key string, frac float64, c color.NRGBA) {
-	now := time.Now()
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	step := int(now.Sub(midnight) / (5 * time.Minute))
-	frac = float64(step) * 5 * 60 / now.AddDate(0, 0, 1).Sub(midnight).Seconds()
+	return ringAt(time.Now(), paused)
+}
+
+// ringAt is the ring at time t: the clock time in 5-minute steps, as the
+// window's logo draws it (web/js/main.js drawLogo), so on the days the clocks
+// change it follows the clock too. Its color is gray while paused; key
+// changes whenever the drawing would.
+func ringAt(t time.Time, paused bool) (key string, frac float64, c color.NRGBA) {
+	step := (t.Hour()*60 + t.Minute()) / 5
+	frac = float64(step) / (24 * 60 / 5)
 	c = ring.Color(frac)
 	if paused {
 		c = ring.Gray

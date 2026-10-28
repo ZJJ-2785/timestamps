@@ -116,11 +116,19 @@ var shellProc = windows.NewCallback(func(hwnd, msg, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case MsgInvoke:
-		s.mu.Lock()
-		q := s.queue
-		s.queue = nil
-		s.mu.Unlock()
-		for _, f := range q {
+		// One call at a time: a call that opens the app window runs the
+		// window's own message loop until it closes, and the calls queued
+		// behind it then run from that loop (each Invoke posts its own
+		// MsgInvoke) instead of waiting for the window to close.
+		for {
+			s.mu.Lock()
+			if len(s.queue) == 0 {
+				s.mu.Unlock()
+				break
+			}
+			f := s.queue[0]
+			s.queue = s.queue[1:]
+			s.mu.Unlock()
 			f()
 		}
 		return 0

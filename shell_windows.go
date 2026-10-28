@@ -157,14 +157,14 @@ func (a *App) updateRing(paused bool) {
 	if key == a.ringKey {
 		return
 	}
-	a.ringKey = key
 	sm := win.IconFromImage(ring.Draw(win.SystemMetric(49), frac, c))
 	big := win.IconFromImage(ring.Draw(win.SystemMetric(11), frac, c))
 	if sm == 0 || big == 0 {
 		win.DestroyIcon(sm)
 		win.DestroyIcon(big)
-		return
+		return // tried again on the next round
 	}
+	a.ringKey = key
 	a.shell.Invoke(func() {
 		oldSm, oldBig := a.ringSm, a.ringBig
 		a.ringSm, a.ringBig = sm, big
