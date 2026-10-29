@@ -72,6 +72,9 @@ type DB struct {
 	titles  map[string]int64
 	maxLen  map[string]*int64
 	version atomic.Int64 // bumped on every write, used as a cache key by the UI
+	// How long a time away lasts at least to count as off, in seconds (0 =
+	// never; see usageRows). Kept in step with the settings by SaveSettings.
+	longAway atomic.Int64
 }
 
 // Open opens (and migrates) the database at path.
@@ -96,6 +99,7 @@ func Open(path string) (*DB, error) {
 		v := m.Int64
 		db.maxLen[t] = &v
 	}
+	db.longAway.Store(db.Settings().longAway())
 	return db, nil
 }
 

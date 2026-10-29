@@ -92,19 +92,14 @@ func (db *DB) Day(a, b int64) (*Day, error) {
 	d := &Day{From: a, To: b, Usage: [][3]int64{}, Apps: [][4]int64{}, Docs: [][4]int64{}, Tags: []Tag{}, Shots: []int64{},
 		AppMap: map[int64]AppInfo{}, TitMap: map[int64]string{}, DocMap: map[int64]DocInfo{}, TagMap: map[string]TagMeta{}}
 
-	rows, err := db.sql.Query("SELECT s, e, state FROM usage_seg WHERE s >= ? AND s < ? AND e > ? ORDER BY s", db.lowS(TUsage, a), b, a)
+	usage, err := db.usageRows(a, b)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var r [3]int64
-		rows.Scan(&r[0], &r[1], &r[2])
-		d.Usage = append(d.Usage, r)
-	}
-	rows.Close()
+	d.Usage = usage
 
 	appIDs, titleIDs, docIDs := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
-	rows, err = db.sql.Query("SELECT s, e, app, title FROM app_seg WHERE s >= ? AND s < ? AND e > ? ORDER BY s", db.lowS(TApp, a), b, a)
+	rows, err := db.sql.Query("SELECT s, e, app, title FROM app_seg WHERE s >= ? AND s < ? AND e > ? ORDER BY s", db.lowS(TApp, a), b, a)
 	if err != nil {
 		return nil, err
 	}

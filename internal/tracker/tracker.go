@@ -77,6 +77,7 @@ type Tracker struct {
 	lastFlush  time.Time
 	pausedTill time.Time
 	paused     bool
+	leaveAt    time.Time // Leave was asked for then (zero: not leaving)
 	state      string
 	idle       int64
 	aways      []Away
@@ -197,7 +198,24 @@ func (t *Tracker) Pause(d time.Duration) {
 	}
 	t.closeAll(time.Now().Unix())
 	t.state = "paused"
+	t.leaveAt = time.Time{}
 	t.mu.Unlock()
+	t.emit("state")
+}
+
+// leaveGrace is how long input right after Leave is ignored: the click that
+// asked for it, and the hand leaving the mouse.
+const leaveGrace = 3 * time.Second
+
+// Leave counts the user away from now until the next keyboard or mouse input
+// (playing sound doesn't end it), however short the time away.
+func (t *Tracker) Leave() {
+	t.mu.Lock()
+	if !t.paused {
+		t.leaveAt = time.Now()
+	}
+	t.mu.Unlock()
+	t.tick(time.Now())
 	t.emit("state")
 }
 
@@ -303,19 +321,13 @@ func (t *Tracker) step(now time.Time, st *store.Settings) string {
 		return ""
 	}
 
-	idleMs := idleMillis()
-	lastInput := now.Add(-time.Duration(idleMs) * time.Millisecond)
-	if st.TreatSoundAsActive {
-		if ls := time.UnixMilli(t.lastSound.Load()); ls.After(lastInput) {
-			lastInput = ls
-		}
-	}
+	lastInput, leaving := t.presence(now, time.Duration(idleMillis())*time.Millisecond, st)
 	t.idle = int64(now.Sub(lastInput) / time.Second)
 	locked := screenLocked()
 	awayAfter := time.Duration(st.AwayMinutes) * time.Minute
 	event := ""
 
-	if locked || now.Sub(lastInput) >= awayAfter {
+	if leaving || locked || now.Sub(lastInput) >= awayAfter {
 		switch t.usageState {
 		case store.Active:
 			cut := lastInput.Unix()
@@ -352,7 +364,22 @@ func (t *Tracker) step(now time.Time, st *store.Settings) string {
 		awayS := t.usage.s
 		t.usage.e = nowS
 		t.db.Extend(store.TUsage, t.usage.id, t.usage.s, nowS)
-		if st.AwayPrompt && nowS-awayS >= int64(st.AwayPromptMinutes)*60 {
+		start := awayS
+		if st.LongAwayOff {
+			start = t.db.AwayStretchStart(awayS)
+		}
+		if st.LongAway(start, nowS) {
+			// Off, not away (see store.usageRows): nothing to ask about, nor
+			// about a part of it asked about before (a mouse bump at night
+			// whose moment of activity was cut away again).
+			out := t.aways[:0]
+			for _, a := range t.aways {
+				if a.S < start || a.E > nowS {
+					out = append(out, a)
+				}
+			}
+			t.aways = out
+		} else if st.AwayPrompt && nowS-awayS >= int64(st.AwayPromptMinutes)*60 {
 			t.aways = append(t.aways, Away{S: awayS, E: nowS})
 			if len(t.aways) > 10 {
 				t.aways = t.aways[len(t.aways)-10:]
@@ -436,6 +463,27 @@ func (t *Tracker) step(now time.Time, st *store.Settings) string {
 		t.flush(nowS)
 	}
 	return event
+}
+
+// presence tells when the user was last at the computer, idle after the last
+// keyboard or mouse input: then, or while active, when sound last played if
+// that counts (sound keeps you active, but a notification while you are away
+// doesn't bring you back). After Leave it is the time Leave was asked for (and
+// leaving is true) until input comes more than leaveGrace later.
+func (t *Tracker) presence(now time.Time, idle time.Duration, st *store.Settings) (last time.Time, leaving bool) {
+	last = now.Add(-idle)
+	if !t.leaveAt.IsZero() {
+		if !last.After(t.leaveAt.Add(leaveGrace)) {
+			return t.leaveAt, true
+		}
+		t.leaveAt = time.Time{} // back
+	}
+	if st.TreatSoundAsActive && t.usageState == store.Active {
+		if ls := time.UnixMilli(t.lastSound.Load()); ls.After(last) {
+			last = ls
+		}
+	}
+	return last, false
 }
 
 func (t *Tracker) emitAsync(typ string) { go t.emit(typ) }

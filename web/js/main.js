@@ -211,6 +211,7 @@ function renderLive() {
   const labels = { active: t('Tracking'), away: t('Away'), paused: t('Paused'), schedule: t('Outside schedule'), off: t('Idle') };
   const head = h('div', { class: 'live-head' }, h('span', { class: 'live-dot ' + l.state }), h('span', { class: 'live-state' }, labels[l.state] || l.state),
     h('div', { class: 'spacer' }),
+    l.state === 'active' ? button('', { icon: 'logout', small: true, variant: 'ghost', title: t('Mark as away'), onClick: () => api.post('leave').then(refreshLive) }) : null,
     button('', { icon: l.state === 'paused' ? 'play' : 'pause', small: true, variant: 'ghost', title: l.state === 'paused' ? t('Resume tracking') : t('Pause tracking'), onClick: (e) => {
       if (l.state === 'paused') { api.post('resume').then(refreshLive); return; }
       dropdown(e.currentTarget, [

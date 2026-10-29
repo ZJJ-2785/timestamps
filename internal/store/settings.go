@@ -21,6 +21,8 @@ type Settings struct {
 	ReadAddressBar     bool        `json:"readAddressBar"`
 	AwayPrompt         bool        `json:"awayPrompt"`
 	AwayPromptMinutes  int         `json:"awayPromptMinutes"`
+	LongAwayOff        bool        `json:"longAwayOff"`   // a long time away counts as off (see LongAway)
+	LongAwayHours      int         `json:"longAwayHours"` // from this long
 	Exclusions         []Exclusion `json:"exclusions"`
 
 	ScheduleOn    bool    `json:"scheduleOn"`
@@ -77,7 +79,7 @@ type GridItem struct {
 func DefaultSettings() Settings {
 	return Settings{
 		AwayMinutes: 10, TreatSoundAsActive: true, TrackTitles: true, TrackDocuments: true, TrackPrivate: true,
-		ReadAddressBar: true, AwayPrompt: true, AwayPromptMinutes: 10, Exclusions: []Exclusion{},
+		ReadAddressBar: true, AwayPrompt: true, AwayPromptMinutes: 10, LongAwayHours: 6, Exclusions: []Exclusion{},
 		ScheduleDays: [7]bool{true, true, true, true, true, false, false}, ScheduleStart: "08:00", ScheduleEnd: "18:00",
 		ShotsOn: true, ShotsInterval: 5, ShotsMaxWidth: 1280, ShotsQuality: 60, ShotsKeepDays: 30, ShotsSkipSame: true,
 		Language: "auto", Theme: "system", LightTheme: "classic", DarkTheme: "classic", DurationFormat: "hm", WeekStart: 1, Clock24: true,
@@ -98,6 +100,9 @@ func (db *DB) Settings() Settings {
 	if s.AwayMinutes < 1 {
 		s.AwayMinutes = 1
 	}
+	if s.LongAwayHours < 1 || s.LongAwayHours > 12 {
+		s.LongAwayHours = 6
+	}
 	if s.ShotsInterval < 1 {
 		s.ShotsInterval = 1
 	}
@@ -112,5 +117,27 @@ func (db *DB) SaveSettings(s Settings) error {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
 	b, _ := json.Marshal(s)
-	return db.SetMeta("settings", string(b))
+	if err := db.SetMeta("settings", string(b)); err != nil {
+		return err
+	}
+	if m := s.longAway(); db.longAway.Swap(m) != m {
+		db.touch() // the timelines read differently now
+	}
+	return nil
 }
+
+// longAway is how long a time away lasts at least to count as off, in
+// seconds; 0 when the option is off.
+func (st Settings) longAway() int64 {
+	if !st.LongAwayOff {
+		return 0
+	}
+	if st.LongAwayHours < 1 || st.LongAwayHours > 12 {
+		st.LongAwayHours = 6
+	}
+	return int64(st.LongAwayHours) * 3600
+}
+
+// LongAway reports whether an away stretch from unix time s to e counts as
+// off: with the option on, when it lasts LongAwayHours or more.
+func (st Settings) LongAway(s, e int64) bool { return longAway(s, e, st.longAway()) }

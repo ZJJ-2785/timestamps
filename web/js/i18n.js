@@ -505,4 +505,8 @@ const zh = {
   "Switches per hour": "每小时切换",
   "Top applications": "主要应用",
   "Weekend": "周末",
+  "Mark as away": "标记为离开",
+  "Count long away time as off": "长时间离开视为关机",
+  "Only when away for at least": "仅当离开至少",
+  "hours": "小时",
 };

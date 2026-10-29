@@ -109,16 +109,14 @@ func (db *DB) Stats(a, b int64, mergeSubdomains bool) (*Stats, error) {
 		st.Days[i].Date = time.Unix(bounds[i], 0).In(time.Local).Format("2006-01-02")
 	}
 
-	rows, err := db.sql.Query("SELECT s, e, state FROM usage_seg WHERE s >= ? AND s < ? AND e > ? ORDER BY s", db.lowS(TUsage, a), b, a)
+	usage, err := db.usageRows(a, b)
 	if err != nil {
 		return nil, err
 	}
 	spill := make([]bool, len(st.Days))
 	var cs, ce int64 // the session being built
-	for rows.Next() {
-		var s, e int64
-		var state int
-		rows.Scan(&s, &e, &state)
+	for _, r := range usage {
+		s, e, state := r[0], r[1], r[2]
 		if s < a {
 			s = a
 		}
@@ -160,13 +158,12 @@ func (db *DB) Stats(a, b int64, mergeSubdomains bool) (*Stats, error) {
 			st.Away += e - s
 		}
 	}
-	rows.Close()
 	st.Focus.add(cs, ce)
 
 	// Applications.
 	// Aggregate first, then join: joining per segment would read every
 	// app row (and its icon) once per segment.
-	rows, err = db.sql.Query(`SELECT g.app, a.key, a.name, a.color, COALESCE(length(a.icon), 0), g.t FROM
+	rows, err := db.sql.Query(`SELECT g.app, a.key, a.name, a.color, COALESCE(length(a.icon), 0), g.t FROM
 		(SELECT app, SUM(MIN(e, ?) - MAX(s, ?)) t FROM app_seg WHERE s >= ? AND s < ? AND e > ? GROUP BY app) g
 		JOIN app a ON a.id = g.app ORDER BY g.t DESC LIMIT 300`, b, a, db.lowS(TApp, a), b, a)
 	if err != nil {
@@ -303,15 +300,12 @@ func (db *DB) Totals(a, b int64) (Period, error) {
 	p := Period{From: a, To: b}
 	bounds := dayStarts(a, b)
 	active := make([]bool, len(bounds)-1)
-	rows, err := db.sql.Query("SELECT s, e, state FROM usage_seg WHERE s >= ? AND s < ? AND e > ?", db.lowS(TUsage, a), b, a)
+	usage, err := db.usageRows(a, b)
 	if err != nil {
 		return p, err
 	}
-	for rows.Next() {
-		var s, e int64
-		var state int
-		rows.Scan(&s, &e, &state)
-		s, e = max64(s, a), min64(e, b)
+	for _, r := range usage {
+		s, e, state := max64(r[0], a), min64(r[1], b), r[2]
 		if state != Active {
 			p.Away += e - s
 			continue
@@ -319,7 +313,6 @@ func (db *DB) Totals(a, b int64) (Period, error) {
 		p.Active += e - s
 		splitDays(bounds, s, e, func(i int, _, _ int64) { active[i] = true })
 	}
-	rows.Close()
 	for _, ok := range active {
 		if ok {
 			p.Days++
