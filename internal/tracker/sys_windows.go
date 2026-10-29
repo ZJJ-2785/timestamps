@@ -24,6 +24,10 @@ func foregroundWindow() uintptr         { return win.ForegroundWindow() }
 func windowVisible(hwnd uintptr) bool   { return win.IsVisible(hwnd) }
 func windowTitle(hwnd uintptr) string   { return win.WindowText(hwnd) }
 
+// screenAwake: Windows reports sleep through Suspend, which needs no wake-up
+// check (Tracker.Sleep is for macOS).
+func screenAwake() bool { return true }
+
 func (t *Tracker) audioLoop() {
 	runtime.LockOSThread()
 	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)

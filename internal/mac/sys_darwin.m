@@ -297,6 +297,18 @@ bool tsScreenLocked(void) {
 	return locked;
 }
 
+// tsDisplayAwake reports whether any display is on. While the lid is
+// closed, Power Nap runs the app with every display asleep.
+bool tsDisplayAwake(void) {
+	CGDirectDisplayID ids[16];
+	uint32_t n = 0;
+	if (CGGetOnlineDisplayList(16, ids, &n) != kCGErrorSuccess) return true;
+	for (uint32_t i = 0; i < n; i++) {
+		if (!CGDisplayIsAsleep(ids[i])) return true;
+	}
+	return false;
+}
+
 // tsSoundPlaying reports whether any app is playing through the default
 // output device.
 bool tsSoundPlaying(void) {

@@ -62,6 +62,8 @@ func idleMillis() uint32 {
 
 func screenLocked() bool { return mac.ScreenLocked() }
 
+func screenAwake() bool { return mac.DisplayAwake() }
+
 var genericNames = map[string]bool{"electron": true, "java": true, "python": true, "python3": true, "node": true, "wine": true, "wine64-preloader": true}
 
 func isGenericAppName(name string) bool {

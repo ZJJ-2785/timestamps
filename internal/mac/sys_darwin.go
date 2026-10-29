@@ -106,6 +106,9 @@ func ScreenLocked() bool { return bool(C.tsScreenLocked()) }
 // SoundPlaying reports whether an app plays through the default output.
 func SoundPlaying() bool { return bool(C.tsSoundPlaying()) }
 
+// DisplayAwake reports whether any display is on (not asleep).
+func DisplayAwake() bool { return bool(C.tsDisplayAwake()) }
+
 // AccessibilityTrusted reports whether Timestamps may read other apps'
 // windows (System Settings → Privacy & Security → Accessibility).
 func AccessibilityTrusted() bool { return bool(C.tsAccessibilityTrusted(false)) }

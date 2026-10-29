@@ -28,6 +28,7 @@ void *tsAppIconPNG(const char *path, int size, int *len);
 double tsIdleSeconds(void);
 bool tsScreenLocked(void);
 bool tsSoundPlaying(void);
+bool tsDisplayAwake(void);
 bool tsAccessibilityTrusted(bool prompt);
 bool tsScreenCaptureAllowed(void);
 void tsRequestScreenCapture(void);

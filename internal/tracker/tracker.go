@@ -77,6 +77,7 @@ type Tracker struct {
 	lastFlush  time.Time
 	pausedTill time.Time
 	paused     bool
+	asleep     time.Time // when the machine went to sleep, until it is seen awake
 	state      string
 	idle       int64
 	aways      []Away
@@ -187,13 +188,50 @@ func (t *Tracker) Suspend() {
 	t.mu.Unlock()
 }
 
+// Sleep closes segments as the machine goes to sleep, and records nothing
+// more until it is awake with a screen on: macOS samples a few more times
+// before it sleeps (with the screen locked, which would start "away"), and
+// runs apps now and then while the lid is closed (Power Nap).
+func (t *Tracker) Sleep() {
+	t.mu.Lock()
+	now := time.Now()
+	t.closeAll(now.Unix())
+	t.lastTick = now
+	t.asleep = now.Round(0) // wall clock: the monotonic one stops in sleep
+	t.mu.Unlock()
+	t.emit("state")
+}
+
+// slept reports a gap of more than 30 s between two samples, by the clock
+// (Round(0) drops the monotonic reading): macOS's monotonic clock stops while
+// the machine sleeps, so a night with the lid closed would look like a second.
+func slept(last, now time.Time) bool {
+	return !last.IsZero() && now.Round(0).Sub(last.Round(0)) > 30*time.Second
+}
+
+// screenOn tells whether a screen is on (replaced in tests).
+var screenOn = screenAwake
+
+// sleeping reports whether the machine is still asleep since Sleep: until a
+// screen is seen on, and at least 20 s after it went to sleep.
+func (t *Tracker) sleeping(now time.Time) bool {
+	if t.asleep.IsZero() {
+		return false
+	}
+	if now.Round(0).Sub(t.asleep) >= 20*time.Second && screenOn() {
+		t.asleep = time.Time{}
+		return false
+	}
+	return true
+}
+
 // Pause stops tracking for d (0 = until resumed).
 func (t *Tracker) Pause(d time.Duration) {
 	t.mu.Lock()
 	t.paused = true
 	t.pausedTill = time.Time{}
 	if d > 0 {
-		t.pausedTill = time.Now().Add(d)
+		t.pausedTill = time.Now().Add(d).Round(0) // by the clock, sleep included
 	}
 	t.closeAll(time.Now().Unix())
 	t.state = "paused"
@@ -281,11 +319,20 @@ func (t *Tracker) tick(now time.Time) {
 // step runs one sample; it returns the event type to emit, if any.
 func (t *Tracker) step(now time.Time, st *store.Settings) string {
 	nowS := now.Unix()
-	if !t.lastTick.IsZero() && now.Sub(t.lastTick) > 30*time.Second {
+	if slept(t.lastTick, now) {
 		// The machine slept or the process was frozen: close at the last sample.
 		t.closeAll(t.lastTick.Unix())
 	}
 	t.lastTick = now
+
+	if t.sleeping(now) {
+		prev := t.state
+		t.closeAll(nowS)
+		if prev != t.state {
+			return "state"
+		}
+		return ""
+	}
 
 	if t.paused && !t.pausedTill.IsZero() && now.After(t.pausedTill) {
 		t.paused = false

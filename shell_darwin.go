@@ -102,7 +102,7 @@ func (a *App) run(showWindow bool) {
 	a.shell.OnOpen = a.openWindow
 	a.shell.OnLaunched = func() { a.launched(showWindow) }
 	a.shell.OnWindowClosed = a.windowClosed
-	a.shell.OnSuspend = a.t.Suspend
+	a.shell.OnSuspend = a.t.Sleep
 	a.shell.OnTerminate = a.terminate
 	a.shell.SetAppearance(appearance(a.t.Settings().Theme))
 	go a.watch()
