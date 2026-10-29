@@ -32,6 +32,7 @@ let lastRoute = null;
 const viewEl = document.getElementById('view');
 const nav = document.getElementById('nav');
 const liveEl = document.getElementById('live');
+const liveRail = document.getElementById('live-rail');
 const timerEl = document.getElementById('timer');
 
 // Light or dark mode, and the color theme picked for that mode (classic =
@@ -167,6 +168,7 @@ function toggleNav() {
 }
 
 let railTip = null;
+let railQuiet = null; // clicked: no name for it until the mouse moves on (its menu is open)
 function hideRailTip() {
   if (!railTip) return;
   railTip.remove();
@@ -175,7 +177,8 @@ function hideRailTip() {
 function railTips(side) {
   side.addEventListener('mouseover', (e) => {
     const el = collapsed() && e.target.closest('[data-tip]');
-    if (!el) return hideRailTip();
+    if (el !== railQuiet) railQuiet = null;
+    if (!el || el === railQuiet) return hideRailTip();
     if (railTip && railTip._for === el) return;
     hideRailTip();
     const r = el.getBoundingClientRect();
@@ -185,8 +188,8 @@ function railTips(side) {
     railTip.style.top = r.top + r.height / 2 + 'px';
     document.body.append(railTip);
   });
-  side.addEventListener('mouseleave', hideRailTip);
-  side.addEventListener('mousedown', hideRailTip);
+  side.addEventListener('mouseleave', () => { railQuiet = null; hideRailTip(); });
+  side.addEventListener('mousedown', (e) => { railQuiet = e.target.closest('[data-tip]'); hideRailTip(); });
 }
 
 function show(route) {
@@ -221,26 +224,45 @@ function renderLive() {
   const enter = liveShown !== '' && shown !== liveShown ? ' enter' : '';
   liveShown = shown;
   const labels = { active: t('Tracking'), away: t('Away'), paused: t('Paused'), schedule: t('Outside schedule'), off: t('Off|state') };
+  const markOff = { label: t('Mark as off'), icon: 'power', onClick: () => api.post('off').then(refreshLive) };
+  const resume = { label: t('Resume tracking'), icon: 'play', onClick: () => api.post('resume').then(refreshLive) };
+  const pauses = [
+    { label: t('Pause for 15 minutes'), icon: 'pause', onClick: () => api.post('pause', { minutes: 15 }).then(refreshLive) },
+    { label: t('Pause for 1 hour'), icon: 'pause', onClick: () => api.post('pause', { minutes: 60 }).then(refreshLive) },
+    { label: t('Pause until I resume'), icon: 'pause', onClick: () => api.post('pause', { minutes: 0 }).then(refreshLive) },
+  ];
   const head = h('div', { class: 'live-head' }, h('span', { class: 'live-dot ' + l.state }), h('span', { class: 'live-state' }, labels[l.state] || l.state),
     h('div', { class: 'spacer' }),
-    l.state === 'active' ? button('', { icon: 'power', small: true, variant: 'ghost', title: t('Mark as off'), onClick: () => api.post('off').then(refreshLive) }) : null,
-    button('', { icon: l.state === 'paused' ? 'play' : 'pause', small: true, variant: 'ghost', title: l.state === 'paused' ? t('Resume tracking') : t('Pause tracking'), onClick: (e) => {
-      if (l.state === 'paused') { api.post('resume').then(refreshLive); return; }
-      dropdown(e.currentTarget, [
-        { label: t('Pause for 15 minutes'), icon: 'pause', onClick: () => api.post('pause', { minutes: 15 }).then(refreshLive) },
-        { label: t('Pause for 1 hour'), icon: 'pause', onClick: () => api.post('pause', { minutes: 60 }).then(refreshLive) },
-        { label: t('Pause until I resume'), icon: 'pause', onClick: () => api.post('pause', { minutes: 0 }).then(refreshLive) },
-      ]);
+    l.state === 'active' ? button('', { icon: 'power', small: true, variant: 'ghost', title: markOff.label, onClick: markOff.onClick }) : null,
+    button('', { icon: l.state === 'paused' ? 'play' : 'pause', small: true, variant: 'ghost', title: l.state === 'paused' ? resume.label : t('Pause tracking'), onClick: (e) => {
+      if (l.state === 'paused') resume.onClick();
+      else dropdown(e.currentTarget, pauses);
     } }));
   liveEl.append(head);
-  if (l.state === 'active' && l.app) {
-    liveEl.append(h('div', { class: 'live-app' + enter }, appIcon({ id: l.appId, icon: !!l.iconV, iconV: l.iconV, name: l.app }, 20),
+  const app = l.state === 'active' && l.app ? { id: l.appId, icon: !!l.iconV, iconV: l.iconV, name: l.app } : null;
+  let detail = '';
+  if (app) {
+    liveEl.append(h('div', { class: 'live-app' + enter }, appIcon(app, 20),
       h('div', { class: 'live-text' }, h('div', { class: 'live-name' }, l.app), h('div', { class: 'live-title', title: l.title }, l.doc || l.title || ''))));
+    detail = l.app;
   } else if (l.state === 'paused' && l.pausedTill) {
-    liveEl.append(h('div', { class: 'live-title' + enter }, t('Resumes at {0}', clock(l.pausedTill))));
+    detail = t('Resumes at {0}', clock(l.pausedTill));
+    liveEl.append(h('div', { class: 'live-title' + enter }, detail));
   } else if ((l.state === 'away' || l.state === 'off') && l.since) {
-    liveEl.append(h('div', { class: 'live-title' + enter }, t('Since {0}', clock(l.since))));
+    detail = t('Since {0}', clock(l.since));
+    liveEl.append(h('div', { class: 'live-title' + enter }, detail));
   }
+
+  // Collapsed, the card is its dot on the app in use; its actions are in its
+  // menu.
+  clear(liveRail);
+  liveRail.className = 'rail-live' + (app ? '' : ' bare');
+  liveRail.append(...(app ? [appIcon(app, 20)] : []), h('span', { class: 'live-dot ' + l.state }));
+  const tip = [labels[l.state] || l.state, detail].filter(Boolean).join(' · ');
+  liveRail.dataset.tip = tip;
+  liveRail.setAttribute('aria-label', tip);
+  if (railTip && railTip._for === liveRail) railTip.textContent = tip;
+  liveRail.onclick = () => dropdown(liveRail, l.state === 'paused' ? [resume] : l.state === 'active' ? [markOff, { separator: true }, ...pauses] : pauses, 'right');
 }
 
 // ---- stopwatch & countdown ------------------------------------------------

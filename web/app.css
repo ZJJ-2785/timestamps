@@ -227,6 +227,16 @@ button.nav-item { width: 100%; border: none; background: none; font: inherit; te
 .rail-clock.cd::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--p, 0) * 100%); background: var(--accent); transition: width 1s linear; }
 .nav-collapsed .rail-clock { display: flex; }
 .nav-collapsed .timer.running { display: none; }
+/* Collapsed, the live card is its dot on the app in use. */
+.rail-live {
+  position: relative; display: none; align-items: center; justify-content: center; height: 36px; border: none; border-radius: var(--r);
+  background: none; cursor: pointer;
+}
+.rail-live:hover { background: var(--surface-3); }
+.rail-live .live-dot { position: absolute; top: 5px; right: 6px; border: 2px solid var(--surface); }
+.rail-live.bare .live-dot { position: static; width: 10px; height: 10px; border: none; }
+.nav-collapsed .rail-live { display: flex; }
+.nav-anim .rail-live { animation: fade 0.3s ease-out; }
 /* The name beside a rail icon. */
 .rail-tip {
   position: fixed; z-index: 200; transform: translateY(-50%); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
