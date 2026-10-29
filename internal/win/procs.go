@@ -18,6 +18,7 @@ var (
 	dwmapi   = windows.NewLazySystemDLL("dwmapi.dll")
 	ntdll    = windows.NewLazySystemDLL("ntdll.dll")
 	comdlg32 = windows.NewLazySystemDLL("comdlg32.dll")
+	wtsapi32 = windows.NewLazySystemDLL("wtsapi32.dll")
 
 	pGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
 	pGetWindowTextW                = user32.NewProc("GetWindowTextW")
@@ -96,6 +97,8 @@ var (
 	pNtQueryInformationProcess = ntdll.NewProc("NtQueryInformationProcess")
 
 	pGetOpenFileNameW = comdlg32.NewProc("GetOpenFileNameW")
+
+	pWTSQuerySessionInformationW = wtsapi32.NewProc("WTSQuerySessionInformationW")
 )
 
 func utf16Ptr(s string) *uint16 {

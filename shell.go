@@ -34,7 +34,7 @@ const (
 	cmdPause60
 	cmdPauseForever
 	cmdResume
-	cmdLeave
+	cmdOff
 	cmdStats
 	cmdExit
 )
@@ -83,8 +83,8 @@ func (a *App) menu() []menuItem {
 	}
 	items = append(items, menuItem{ID: cmdShot, Text: a.Text("takeShot")})
 	l := a.t.Live()
-	if l.State == "active" {
-		items = append(items, menuItem{ID: cmdLeave, Text: a.Text("leave")})
+	if l.State == "active" || l.State == "away" { // still away the moment the user is back to right-click
+		items = append(items, menuItem{ID: cmdOff, Text: a.Text("markOff")})
 	}
 	if l.State == "paused" {
 		label := a.Text("resume")
@@ -127,8 +127,8 @@ func (a *App) command(id int) {
 		a.t.Pause(0)
 	case cmdResume:
 		a.t.Resume()
-	case cmdLeave:
-		a.t.Leave()
+	case cmdOff:
+		a.t.MarkOff()
 	case cmdExit:
 		a.quit()
 	}
@@ -259,7 +259,7 @@ var shellText = map[string]map[string]string{
 		"awayTitle": "Welcome back", "awayText": "You were away %s–%s (%dh %02dm). Click to tag this time.",
 		"countdownDone": "Countdown finished", "stopwatchRunning": "Stopwatch running", "stopwatchStarted": "Stopwatch started. Stop it from the tray icon or the app.",
 		"activeToday": "active today", "pausedTip": "tracking paused",
-		"leave": "Mark as away",
+		"markOff": "Mark as off",
 	},
 	"zh": {
 		"open": "打开 Timestamps", "statistics": "统计", "startStopwatch": "开始秒表",
@@ -270,6 +270,6 @@ var shellText = map[string]map[string]string{
 		"awayTitle": "欢迎回来", "awayText": "您离开了 %s–%s（%d 小时 %02d 分）。点击为这段时间添加标签。",
 		"countdownDone": "倒计时结束", "stopwatchRunning": "秒表运行中", "stopwatchStarted": "秒表已开始。可从托盘图标或应用中停止。",
 		"activeToday": "今日活动", "pausedTip": "已暂停跟踪",
-		"leave": "标记为离开",
+		"markOff": "标记为关机",
 	},
 }

@@ -9,7 +9,7 @@ export function setLang(l) {
 export const locale = () => (lang === 'zh' ? 'zh-CN' : 'en-US');
 
 export function t(s, ...args) {
-  let r = (lang === 'zh' && zh[s]) || s;
+  let r = (lang === 'zh' && zh[s]) || s.split('|')[0]; // "Off|state": a key with its context
   for (let i = 0; i < args.length; i++) r = r.split('{' + i + '}').join(String(args[i]));
   return r;
 }
@@ -242,7 +242,6 @@ const zh = {
   "Hide window titles and documents": "隐藏窗口标题和文档",
   "High": "高",
   "Hours": "时间段",
-  "Idle": "空闲",
   "If": "如果",
   "Ignore": "忽略",
   "Import": "导入",
@@ -505,7 +504,8 @@ const zh = {
   "Switches per hour": "每小时切换",
   "Top applications": "主要应用",
   "Weekend": "周末",
-  "Mark as away": "标记为离开",
+  "Mark as off": "标记为关机",
+  "Off|state": "关机",
   "Count long away time as off": "长时间离开视为关机",
   "Only when away for at least": "仅当离开至少",
   "hours": "小时",

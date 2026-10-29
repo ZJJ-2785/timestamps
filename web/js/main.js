@@ -208,10 +208,10 @@ function renderLive() {
   const shown = l.state + '/' + (l.state === 'active' ? l.appId : '');
   const enter = liveShown !== '' && shown !== liveShown ? ' enter' : '';
   liveShown = shown;
-  const labels = { active: t('Tracking'), away: t('Away'), paused: t('Paused'), schedule: t('Outside schedule'), off: t('Idle') };
+  const labels = { active: t('Tracking'), away: t('Away'), paused: t('Paused'), schedule: t('Outside schedule'), off: t('Off|state') };
   const head = h('div', { class: 'live-head' }, h('span', { class: 'live-dot ' + l.state }), h('span', { class: 'live-state' }, labels[l.state] || l.state),
     h('div', { class: 'spacer' }),
-    l.state === 'active' ? button('', { icon: 'logout', small: true, variant: 'ghost', title: t('Mark as away'), onClick: () => api.post('leave').then(refreshLive) }) : null,
+    l.state === 'active' ? button('', { icon: 'power', small: true, variant: 'ghost', title: t('Mark as off'), onClick: () => api.post('off').then(refreshLive) }) : null,
     button('', { icon: l.state === 'paused' ? 'play' : 'pause', small: true, variant: 'ghost', title: l.state === 'paused' ? t('Resume tracking') : t('Pause tracking'), onClick: (e) => {
       if (l.state === 'paused') { api.post('resume').then(refreshLive); return; }
       dropdown(e.currentTarget, [
@@ -226,7 +226,7 @@ function renderLive() {
       h('div', { class: 'live-text' }, h('div', { class: 'live-name' }, l.app), h('div', { class: 'live-title', title: l.title }, l.doc || l.title || ''))));
   } else if (l.state === 'paused' && l.pausedTill) {
     liveEl.append(h('div', { class: 'live-title' + enter }, t('Resumes at {0}', clock(l.pausedTill))));
-  } else if (l.state === 'away' && l.since) {
+  } else if ((l.state === 'away' || l.state === 'off') && l.since) {
     liveEl.append(h('div', { class: 'live-title' + enter }, t('Since {0}', clock(l.since))));
   }
 }

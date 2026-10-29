@@ -29,7 +29,7 @@ On a Mac, get `Timestamps-<version>-macos.zip` from the same page; see
 
 | ManicTime | Timestamps |
 | --- | --- |
-| Computer usage timeline (active / away / off) | Same. Away after *N* minutes of no input (retroactive from the last input), lock screen = away, sleep/hibernate gaps, playing sound keeps you active (optional). *Mark as away* (tray or window) counts you away at once, until the next input. Optionally a long time away (*N* hours or more) counts as off, for a screen that never turns off. |
+| Computer usage timeline (active / away / off) | Same. Away after *N* minutes of no input (retroactive from the last input), lock screen = away, sleep/hibernate gaps, playing sound keeps you active (optional). *Mark as off* (tray or window) records nothing from then until the next input, as if the computer were off. Optionally a long time away (*N* hours or more) counts as off, for a screen that never turns off. |
 | Applications timeline with window titles | Same, with real app icons and names from the executable. UWP apps resolved behind ApplicationFrameHost. |
 | Documents timeline (files and websites) | Same. **Full file paths** from Office/WPS (COM), Explorer windows, the program's command line and Windows *Recent items*; falls back to the name in the title. **Websites** read from the address bar of Chrome, Edge, Firefox, Brave, Opera, Vivaldi, 360, QQ and others via UI Automation, or from the optional browser extension. |
 | Screenshots | Automatic, on by default: every 5 min while active, 1280 px JPEG (about 80 KB), unchanged screens skipped, kept 30 days. All configurable, plus "take screenshot now". |
@@ -67,7 +67,7 @@ continues from the tray.
 ## Using it
 
 Run the exe (or `build\timestamps.exe` when built from source). The tray icon opens the window (left click) or a
-menu (right click: stopwatch, screenshot, mark as away, pause tracking, exit).
+menu (right click: stopwatch, screenshot, mark as off, pause tracking, exit).
 `timestamps.exe --minimized` starts in the tray; *Start with Windows* in
 Settings does that at login.
 

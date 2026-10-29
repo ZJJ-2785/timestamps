@@ -164,9 +164,14 @@ func IdleMillis() uint32 {
 	return uint32(now) - lii.dwTime
 }
 
-// IsLocked reports whether the interactive desktop is not the user's
-// default desktop (lock screen, UAC prompt, sign-in screen).
+// IsLocked reports whether the session is locked or the interactive desktop
+// is not the user's default desktop (sign-in screen, UAC prompt). The desktop
+// alone misses the lock screen until its sign-in prompt comes up: the lock
+// screen itself (LockApp) shows on the default desktop.
 func IsLocked() bool {
+	if _, locked, _ := sessionState(); locked {
+		return true
+	}
 	h, _, _ := pOpenInputDesktop.Call(0, 0, 0x0001)
 	if h == 0 {
 		return true
@@ -179,6 +184,25 @@ func IsLocked() bool {
 		return false
 	}
 	return !strings.EqualFold(windows.UTF16ToString(name[:]), "Default")
+}
+
+// sessionState reads this session's id and whether it is locked from Remote
+// Desktop Services (WTSINFOEX, level 1); ok is false when it can't tell.
+func sessionState() (id uint32, locked, ok bool) {
+	var buf uintptr
+	var n uint32
+	// WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSSessionInfoEx
+	if r, _, _ := pWTSQuerySessionInformationW.Call(0, 0xFFFFFFFF, 25, uintptr(unsafe.Pointer(&buf)), uintptr(unsafe.Pointer(&n))); r == 0 || buf == 0 {
+		return 0, false, false
+	}
+	defer windows.WTSFreeMemory(buf)
+	if n < 20 || *(*uint32)(unsafe.Pointer(buf)) != 1 {
+		return 0, false, false
+	}
+	// After Level, the level-1 data (8-aligned): SessionId, SessionState,
+	// SessionFlags (WTS_SESSIONSTATE_LOCK 0, _UNLOCK 1, _UNKNOWN -1).
+	flags := *(*int32)(unsafe.Pointer(buf + 16))
+	return *(*uint32)(unsafe.Pointer(buf + 8)), flags == 0, flags == 0 || flags == 1
 }
 
 // VersionStrings reads the FileDescription and ProductName from an

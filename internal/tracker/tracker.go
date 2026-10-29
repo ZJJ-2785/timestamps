@@ -77,7 +77,8 @@ type Tracker struct {
 	lastFlush  time.Time
 	pausedTill time.Time
 	paused     bool
-	leaveAt    time.Time // Leave was asked for then (zero: not leaving)
+	offAt      time.Time // MarkOff was asked for then (zero: not marked)
+	offBack    time.Time // input came after MarkOff, first seen then (see markedOff)
 	state      string
 	idle       int64
 	aways      []Away
@@ -198,21 +199,27 @@ func (t *Tracker) Pause(d time.Duration) {
 	}
 	t.closeAll(time.Now().Unix())
 	t.state = "paused"
-	t.leaveAt = time.Time{}
+	t.offAt, t.offBack = time.Time{}, time.Time{}
 	t.mu.Unlock()
 	t.emit("state")
 }
 
-// leaveGrace is how long input right after Leave is ignored: the click that
-// asked for it, and the hand leaving the mouse.
-const leaveGrace = 3 * time.Second
+const (
+	// offGrace is how long input right after MarkOff is ignored: the click
+	// that asked for it, and the hand leaving the mouse.
+	offGrace = 3 * time.Second
+	// offLockWait is how long input after it must go without the screen
+	// locking to end the off: Win+L's key press comes before the lock screen.
+	offLockWait = 2 * time.Second
+)
 
-// Leave counts the user away from now until the next keyboard or mouse input
-// (playing sound doesn't end it), however short the time away.
-func (t *Tracker) Leave() {
+// MarkOff records nothing from now until the next keyboard or mouse input
+// (playing sound doesn't end it, nor locking the screen), as if the computer
+// were off meanwhile.
+func (t *Tracker) MarkOff() {
 	t.mu.Lock()
 	if !t.paused {
-		t.leaveAt = time.Now()
+		t.offAt, t.offBack = time.Now(), time.Time{}
 	}
 	t.mu.Unlock()
 	t.tick(time.Now())
@@ -238,6 +245,9 @@ func (t *Tracker) Live() Live {
 	}
 	if t.state != "active" {
 		l.AppID, l.App, l.Title, l.Doc, l.DocKind, l.Since = 0, "", "", "", 0, t.usage.s
+	}
+	if t.state == "off" && !t.offAt.IsZero() {
+		l.Since = t.offAt.Unix()
 	}
 	return l
 }
@@ -321,13 +331,24 @@ func (t *Tracker) step(now time.Time, st *store.Settings) string {
 		return ""
 	}
 
-	lastInput, leaving := t.presence(now, time.Duration(idleMillis())*time.Millisecond, st)
-	t.idle = int64(now.Sub(lastInput) / time.Second)
+	idle := time.Duration(idleMillis()) * time.Millisecond
 	locked := screenLocked()
+	if t.markedOff(now, idle, locked) {
+		prev := t.state
+		t.closeAll(nowS)
+		t.idle = int64(idle / time.Second)
+		if prev != t.state {
+			return "state"
+		}
+		return ""
+	}
+
+	lastInput := t.presence(now, idle, st)
+	t.idle = int64(now.Sub(lastInput) / time.Second)
 	awayAfter := time.Duration(st.AwayMinutes) * time.Minute
 	event := ""
 
-	if leaving || locked || now.Sub(lastInput) >= awayAfter {
+	if locked || now.Sub(lastInput) >= awayAfter {
 		switch t.usageState {
 		case store.Active:
 			cut := lastInput.Unix()
@@ -465,25 +486,42 @@ func (t *Tracker) step(now time.Time, st *store.Settings) string {
 	return event
 }
 
+// markedOff tells whether the time is still marked off (see MarkOff), idle
+// after the last keyboard or mouse input: until input comes more than offGrace
+// after MarkOff, and offLockWait goes by after it with the screen unlocked.
+func (t *Tracker) markedOff(now time.Time, idle time.Duration, locked bool) bool {
+	if t.offAt.IsZero() {
+		return false
+	}
+	if locked { // locking the screen is leaving, not coming back
+		t.offBack = time.Time{}
+		return true
+	}
+	if !now.Add(-idle).After(t.offAt.Add(offGrace)) {
+		return true
+	}
+	if t.offBack.IsZero() {
+		t.offBack = now
+	}
+	if now.Sub(t.offBack) < offLockWait {
+		return true
+	}
+	t.offAt, t.offBack = time.Time{}, time.Time{} // back
+	return false
+}
+
 // presence tells when the user was last at the computer, idle after the last
 // keyboard or mouse input: then, or while active, when sound last played if
 // that counts (sound keeps you active, but a notification while you are away
-// doesn't bring you back). After Leave it is the time Leave was asked for (and
-// leaving is true) until input comes more than leaveGrace later.
-func (t *Tracker) presence(now time.Time, idle time.Duration, st *store.Settings) (last time.Time, leaving bool) {
-	last = now.Add(-idle)
-	if !t.leaveAt.IsZero() {
-		if !last.After(t.leaveAt.Add(leaveGrace)) {
-			return t.leaveAt, true
-		}
-		t.leaveAt = time.Time{} // back
-	}
+// doesn't bring you back).
+func (t *Tracker) presence(now time.Time, idle time.Duration, st *store.Settings) time.Time {
+	last := now.Add(-idle)
 	if st.TreatSoundAsActive && t.usageState == store.Active {
 		if ls := time.UnixMilli(t.lastSound.Load()); ls.After(last) {
 			last = ls
 		}
 	}
-	return last, false
+	return last
 }
 
 func (t *Tracker) emitAsync(typ string) { go t.emit(typ) }

@@ -722,8 +722,8 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request, route string) {
 		s.T.Resume()
 		writeJSON(w, r, s.T.Live())
 
-	case "leave":
-		s.T.Leave()
+	case "off":
+		s.T.MarkOff()
 		writeJSON(w, r, s.T.Live())
 
 	case "stopwatch/start":
