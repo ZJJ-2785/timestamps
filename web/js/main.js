@@ -68,6 +68,14 @@ function ringColor(f) {
   }
   return 'rgb(229,72,77)';
 }
+// Where the ring's round ends are centered, as angles clockwise from 12
+// o'clock, for a ring of radius r and band width w (as ring.Draw): within the
+// arc, which stops short of a full circle so the day doesn't read as over.
+function ringEnds(f, r, w) {
+  const a0 = w / 2 / r;
+  const end = Math.min(f * 2 * Math.PI, 2 * Math.PI - Math.max(1.5, w / 2) / r);
+  return [a0, Math.max(a0, end - a0)];
+}
 let logoKey = '';
 function drawLogo() {
   const d = new Date();
@@ -78,11 +86,11 @@ function drawLogo() {
   logoKey = key;
   const color = paused ? 'rgb(139,147,167)' : ringColor(f);
   const track = 'rgba(128,134,148,0.43)';
-  const r = 10.6, c = 2 * Math.PI * r;
+  const r = 10.6, c = 2 * Math.PI * r, [a0, a1] = ringEnds(f, r, 4.8);
   const host = document.getElementById('brand-logo');
   if (host) {
     host.innerHTML = `<svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="${r}" fill="none" stroke="${track}" stroke-width="4.8"/>` +
-      (f > 0 ? `<circle cx="14" cy="14" r="${r}" fill="none" stroke="${color}" stroke-width="4.8" stroke-linecap="round" stroke-dasharray="${(f * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 14 14)"/>` : '') + '</svg>';
+      (f > 0 ? `<circle cx="14" cy="14" r="${r}" fill="none" stroke="${color}" stroke-width="4.8" stroke-linecap="round" stroke-dasharray="${Math.max(0.01, (a1 - a0) * r).toFixed(2)} ${c.toFixed(2)}" stroke-dashoffset="${(-a0 * r).toFixed(2)}" transform="rotate(-90 14 14)"/>` : '') + '</svg>';
   }
   const cv = document.createElement('canvas');
   cv.width = cv.height = 64;
@@ -90,7 +98,11 @@ function drawLogo() {
   g.lineWidth = 11;
   g.strokeStyle = track;
   g.beginPath(); g.arc(32, 32, 24, 0, 2 * Math.PI); g.stroke();
-  if (f > 0) { g.strokeStyle = color; g.lineCap = 'round'; g.beginPath(); g.arc(32, 32, 24, -Math.PI / 2, -Math.PI / 2 + f * 2 * Math.PI); g.stroke(); }
+  if (f > 0) {
+    const [b0, b1] = ringEnds(f, 24, 11);
+    g.strokeStyle = color; g.lineCap = 'round';
+    g.beginPath(); g.arc(32, 32, 24, b0 - Math.PI / 2, Math.max(b1, b0 + 0.001) - Math.PI / 2); g.stroke();
+  }
   const link = document.querySelector('link[rel="icon"]');
   if (link) link.href = cv.toDataURL('image/png');
 }

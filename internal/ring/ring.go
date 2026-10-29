@@ -37,6 +37,10 @@ func Color(frac float64) color.NRGBA {
 	return stops[len(stops)-1].c
 }
 
+// gapMin is the least gap, in pixels along the middle of the band, that the
+// arc leaves before 12 o'clock for a band width pixels wide.
+func gapMin(width float64) float64 { return math.Max(1.5, width/2) }
+
 // Draw returns a size×size ring filled up to frac (0..1) in c, with round
 // ends, over a faint track that shows on light and dark taskbars.
 func Draw(size int, frac float64, c color.NRGBA) *image.NRGBA {
@@ -46,9 +50,14 @@ func Draw(size int, frac float64, c color.NRGBA) *image.NRGBA {
 	mid := s/2 - width/2 - s*0.03 // radius of the middle of the band
 	cx, cy := s/2, s/2
 	end := math.Min(math.Max(frac, 0), 1) * 2 * math.Pi
-	// Ends of the arc (for the round caps).
-	sx, sy := cx, cy-mid
-	ex, ey := cx+mid*math.Sin(end), cy-mid*math.Cos(end)
+	// The round ends stay within the arc, and the arc stops short of a full
+	// circle: otherwise the ends close the gap the last hours leave (at tray
+	// size from about 22:20) and the day reads as over.
+	end = math.Min(end, 2*math.Pi-gapMin(width)/mid)
+	a0 := width / 2 / mid // centers of the round ends, as angles
+	a1 := math.Max(a0, end-a0)
+	sx, sy := cx+mid*math.Sin(a0), cy-mid*math.Cos(a0)
+	ex, ey := cx+mid*math.Sin(a1), cy-mid*math.Cos(a1)
 	track := color.NRGBA{128, 134, 148, 110}
 	const n = 4 // samples per side
 	for py := 0; py < size; py++ {
@@ -64,7 +73,7 @@ func Draw(size int, frac float64, c color.NRGBA) *image.NRGBA {
 					if a < 0 {
 						a += 2 * math.Pi
 					}
-					onArc := frac > 0 && ((inBand && a <= end) || math.Hypot(x-sx, y-sy) <= width/2 || math.Hypot(x-ex, y-ey) <= width/2)
+					onArc := frac > 0 && ((inBand && a >= a0 && a <= a1) || math.Hypot(x-sx, y-sy) <= width/2 || math.Hypot(x-ex, y-ey) <= width/2)
 					switch {
 					case onArc:
 						arc++
