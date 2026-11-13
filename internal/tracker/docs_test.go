@@ -9,6 +9,17 @@ func TestPageTitle(t *testing.T) {
 		"Trending repositories on GitHub today · GitHub - Mozilla Firefox": "Trending repositories on GitHub today · GitHub",
 		"上网习惯 和另外 3 个页面 - 个人 - Microsoft Edge":                             "上网习惯",
 		"Inbox (3) - user@example.com - Gmail - Google Chrome":             "Inbox (3) - user@example.com - Gmail",
+		// Profiles: after the name (Chrome/Edge on a Mac), before it (Edge on Windows).
+		"Example Domain - Google Chrome - Jonathan":                     "Example Domain",
+		"Inbox - user@example.com - Gmail - Google Chrome - Work":       "Inbox - user@example.com - Gmail",
+		"Example Domain - Google Chrome Beta - Profile 2":               "Example Domain",
+		"Example Domain - Microsoft\u200b Edge - Personal":              "Example Domain",
+		"GitHub - Personal - Microsoft\u200b Edge":                      "GitHub",
+		"Inbox - user@example.com - Gmail - Profile 1 - Microsoft Edge": "Inbox - user@example.com - Gmail",
+		"新标签页 - 个人 - Microsoft Edge":                                    "新标签页",
+		// Titles that only mention a browser keep their last part (Safari adds no suffix).
+		"Carmen - Opera - Wikipedia": "Carmen - Opera - Wikipedia",
+		"Brave - Search":             "Brave - Search",
 	}
 	for in, want := range cases {
 		if got := PageTitle(in); got != want {

@@ -154,12 +154,23 @@ func fileDoc(p string) Doc {
 
 var browserSuffix = regexp.MustCompile(`\s+[-—–]\s+(Google Chrome|Microsoft Edge|Brave|Opera|Vivaldi|Chromium|Mozilla Firefox|Firefox|Waterfox|LibreWolf|Floorp|Zen Browser|360安全浏览器|360极速浏览器|QQ浏览器|搜狗高速浏览器|Yandex|Arc|Thorium)(\s+(Beta|Dev|Canary|Nightly|Developer Edition))?$`)
 
+// With several profiles, Chrome and Edge on a Mac add the profile after the
+// browser name: "Page - Google Chrome - Work". Only the two-word names, so a
+// page title that merely mentions "Opera" or "Brave" keeps its last part.
+var profileAfter = regexp.MustCompile(`\s+[-—–]\s+(Google Chrome|Microsoft Edge|Chromium)(\s+(Beta|Dev|Canary))?\s+[-—–]\s+[^-—–]+$`)
+
+// Edge on Windows puts the profile before its name: "Page - Personal -
+// Microsoft Edge".
+var edgeProfile = regexp.MustCompile(`\s+[-—–]\s+[^-—–]+\s+[-—–]\s+Microsoft Edge(\s+(Beta|Dev|Canary))?$`)
+
 var morePages = regexp.MustCompile(`\s+(and \d+ more pages?|和另外\s*\d+\s*个页面|和其他\s*\d+\s*个页面|及其他\s*\d+\s*个页面)(\s+[-—–]\s+.*)?$`)
 
 // PageTitle strips the browser name, profile and "and N more pages" from a
 // browser window title.
 func PageTitle(title string) string {
 	t := strings.ReplaceAll(title, "​", "") // Edge puts a zero-width space in "Microsoft Edge"
+	t = profileAfter.ReplaceAllString(t, "")
+	t = edgeProfile.ReplaceAllString(t, "")
 	t = browserSuffix.ReplaceAllString(t, "")
 	t = morePages.ReplaceAllString(t, "")
 	return strings.TrimSpace(t)
