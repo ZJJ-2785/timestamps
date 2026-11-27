@@ -25,7 +25,7 @@ cp -R assets/zh-Hans.lproj "$app/Contents/Resources/"
 plutil -lint "$app/Contents/Info.plist"
 
 # Ad hoc signature: Apple silicon runs only signed code. Not notarized, so
-# Gatekeeper asks before the first start (see the README).
+# Gatekeeper asks before the first start (see docs/macos.md).
 codesign --force --sign - "$app"
 codesign --verify --verbose "$app"
 
